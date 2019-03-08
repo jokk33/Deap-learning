@@ -1,0 +1,417 @@
+#This R Script contains 5 parts: 1. single layer perceptron model 2.MLP model  3. CNN model 4. tuning 5.visulazition. 
+#When test different models, you can creat a new R Script which only contain a single model, then use part 4 to test and modify parameters.
+#Here I bulit 3 R scripts for 3 models:singlelayer.R, MLP.R, CNNMNIST.R respectively.
+#And in the end of part 4 (part4.4), I used data augmentation to get a best test accuracy----0.9956,please run this part for verifying the best result.
+
+#================================part1:single layer perceptron=============================
+
+library(keras)
+
+#set super parameters
+
+FLAGS <- flags(
+  
+  flag_integer("epochs", 10),
+  flag_integer("batch_size", 128),
+  flag_numeric("learning_rate", 0.001)
+)
+
+load('mnist2.RData') 
+
+#reshape input images
+
+train_images <- array_reshape(mnist2$train$x, c(50000, 28 * 28))
+train_images <- train_images / 255
+test_images <- array_reshape(mnist2$test$x, c(10000, 28 * 28))
+test_images <- test_images / 255
+train_labels <- to_categorical(mnist2$train$y)
+test_labels <- to_categorical(mnist2$test$y)
+
+# build a single layer perceptropn
+
+network <- keras_model_sequential() %>% 
+  layer_dense(units = 10, activation = "softmax", input_shape=c(28*28))
+
+
+network %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(lr = FLAGS$learning_rate),
+  metrics = c('accuracy')
+)
+
+#get starting time and begin training 
+
+start_time <- Sys.time()
+network %>% fit(
+  train_images, train_labels,
+  batch_size = FLAGS$batch_size,
+  epochs = FLAGS$epochs,
+  verbose = 1,
+  validation_split = 0.2
+)
+
+end_time <- Sys.time()
+cat("Running time for training: ", end_time - start_time, "seconds")
+
+#get accuracy
+
+score <- network %>% evaluate(
+  test_images, test_labels,
+  verbose = 0
+)
+
+cat('Test loss:', score$loss, '\n')
+cat('Test accuracy:', score$acc, '\n')
+
+
+
+
+#================================part2:MLP=================================================
+
+library(keras)
+
+# add units as new parameters
+
+FLAGS <- flags(
+  flag_integer("dense_units1", 128),
+  flag_numeric("dropout1", 0.4),
+  flag_integer("dense_units2", 128),
+  flag_numeric("dropout2", 0.3),
+  flag_integer("epochs", 10),
+  flag_integer("batch_size", 128),
+  flag_numeric("learning_rate", 0.001)
+)
+
+
+load('mnist2.RData') 
+
+train_images <- array_reshape(mnist2$train$x, c(50000, 28 * 28))
+train_images <- train_images / 255
+test_images <- array_reshape(mnist2$test$x, c(10000, 28 * 28))
+test_images <- test_images / 255
+train_labels <- to_categorical(mnist2$train$y)
+test_labels <- to_categorical(mnist2$test$y)
+
+# comparing with single layer perceptron,add two more layers in MLP model
+
+input <- layer_input(shape = c(784))
+predictions <- input %>% 
+  layer_dense(units = FLAGS$dense_units1, activation = 'relu') %>%
+  layer_dropout(rate = FLAGS$dropout1) %>%
+  layer_dense(units = FLAGS$dense_units2, activation = 'relu') %>%
+  layer_dropout(rate = FLAGS$dropout2) %>%
+  layer_dense(units = 10, activation = 'softmax')
+
+model <- keras_model(input, predictions) %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(lr = FLAGS$learning_rate),
+  metrics = c('accuracy')
+)
+
+start_time <- Sys.time()
+history <- model %>% fit(
+  train_images, train_labels,
+  batch_size = FLAGS$batch_size,
+  epochs = FLAGS$epochs,
+  verbose = 1,
+  validation_split = 0.2
+)
+
+end_time <- Sys.time()
+cat("Running time for training: ", end_time - start_time, "seconds")
+score <- model %>% evaluate(
+  test_images, test_labels,
+  verbose = 0
+)
+
+cat('Test loss:', score$loss, '\n')
+cat('Test accuracy:', score$acc, '\n')
+
+
+
+#================================part3:CNN=================================================
+
+#building a CNN model
+library(keras)
+#preparing data, reshape data to 3 dimensions (height = 28px, width = 28px , canal = 1) and normalize the data
+load('mnist2.RData') 
+
+train_images <- array_reshape(mnist2$train$x, c(50000,28,28,1))
+train_images <- train_images / 255
+test_images <- array_reshape(mnist2$test$x, c(10000,28,28,1))
+test_images <- test_images / 255
+train_labels <- to_categorical(mnist2$train$y)
+test_labels <- to_categorical(mnist2$test$y)
+
+#define paramaters of model
+
+FLAGS <- flags(
+  
+  flag_numeric("dropout1", 0.2),
+  flag_numeric("dropout2", 0.2),
+  flag_integer("epochs", 10),
+  flag_numeric("learning_rate", 0.001),
+  flag_integer("batch_size", 64)
+)
+
+#building a model, and I will explain this model in the report
+
+model<-keras_model_sequential()
+
+model %>% 
+  
+  layer_conv_2d(filters = 32, kernel_size = c(5,5),padding = 'Valid',
+                activation = 'relu', input_shape = c(28,28,1))%>%
+  
+  layer_conv_2d(filters = 32, kernel_size = c(5,5),padding = 'Same',
+                activation = 'relu')%>%
+  
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_dropout(rate = FLAGS$dropout1) %>% 
+  
+  layer_conv_2d(filters = 64, kernel_size = c(3,3),padding = 'Same',
+                activation = 'relu')%>%
+  
+  layer_conv_2d(filters = 64, kernel_size = c(3,3),padding = 'Same',
+                activation = 'relu')%>%
+  
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_dropout(rate = FLAGS$dropout2) %>%
+  
+  layer_flatten() %>% 
+  
+  layer_dense(units=256,activation='relu')%>%
+  layer_dense(units=10,activation='softmax')
+
+model%>%compile(
+  loss='categorical_crossentropy',
+  optimizer= optimizer_adam(lr=FLAGS$learning_rate),
+  #optimizer_adam can be taken as a combination of AdaGrad and RMSProp, so here I used Adam algorithm.
+  metrics='accuracy'
+)
+
+start_time <- Sys.time()
+
+model %>% fit(
+  train_images, train_labels, 
+  epochs = FLAGS$epochs,
+  batch_size=FLAGS$batch_size,
+  validation_split = 0.2
+)
+
+end_time <- Sys.time()
+cat("Running time for training: ", end_time - start_time, "mins")
+
+score <- model %>% evaluate(
+  test_images, test_labels,
+  verbose = 0
+)
+
+cat('Test loss:', score$loss, '\n')
+cat('Test accuracy:', score$acc, '\n')
+
+
+
+#================================part4:tuning==============================================
+
+#4.1 tuning for single layer perceptron 
+
+epochExperimentslp<-tuning_run("singlelayer.R", runs_dir = "epoch_tuning", flags = list(
+  epochs = c(1, 2, 5, 10, 20, 30)
+))
+View(epochExperimentslp[2:7])
+
+learningRateExperimentslp<-tuning_run("singlelayer.R", flags = list(learning_rate=c(0.00001,0.0001,0.001,0.01,0.1,0.5,1.0)))
+View(learningRateExperimentslp[2:7]) 
+
+batchSizeExperimentslp<-tuning_run("singlelayer.R", flags = list(batch_size=c(2,4,8,16,32,64,128,256,512,1024)))
+View(batchSizeExperimentslp[2:7])
+
+#4.2 tuning for MLP
+
+epochExperiment<-tuning_run("MLP.R", runs_dir = "epoch_tuning", flags = list(
+  epochs = c(1, 2, 5, 10, 20, 30)
+))
+View(epochExperiment)
+
+dropoutExperiment1<-tuning_run("MLP.R", flags = list(dropout1=c(0.5,0.6,0.7,0.8,0.99)))
+View(dropoutExperiment1[2:7])
+
+dropoutExperiment2<-tuning_run("MLP.R", flags = list(dropout1=c(0.5,0.6,0.7,0.8,0.99),dropout2=c(0.5,0.6,0.7,0.8,0.99)))
+View(dropoutExperiment2)
+
+learningRateExperiment<-tuning_run("MLP.R", flags = list(learning_rate=c(0.00001,0.0001,0.001,0.01,0.1,0.5,1.0)))
+View(learningRateExperiment) 
+
+batchSizeExperiment<-tuning_run("MLP.R", flags = list(batch_size=c(2,4,8,16,32,64,128,256,512,1024)))
+View(batchSizeExperiment[2:7])
+
+denseUnits1Experiment<-tuning_run("MLP.R", flags = list(dense_units1=c(2,4,8,16,32,64,128,256,512,1024)))
+View(denseUnits1Experiment[2:7])
+
+
+#4.3 tuning for CNN
+
+epochExperimentcnn<-tuning_run("CNNMNIST.R", runs_dir = "epoch_tuning", flags = list(
+  epochs = c(1, 2, 5, 10, 20, 30)
+))
+View(epochExperimentcnn[2:7])
+
+learningRateExperimentcnn<-tuning_run("CNNMNIST.R", flags = list(learning_rate=c(0.00001,0.0001,0.001,0.01,0.1,0.5)))
+View(learningRateExperimentcnn[2:7]) 
+
+
+dropoutExperiment1cnn<-tuning_run("CNNMNIST.R", flags = list(dropout1=c(0.2,0.3,0.4,0.5,0.6)))
+View(dropoutExperiment1cnn[2:7])
+
+#================================part4.4 CNN with data augumentation=======================
+
+library(keras)
+load('mnist2.RData') 
+
+train_images <- array_reshape(mnist2$train$x, c(50000,28,28,1))
+train_images <- train_images / 255
+test_images <- array_reshape(mnist2$test$x, c(10000,28,28,1))
+test_images <- test_images / 255
+train_labels <- to_categorical(mnist2$train$y)
+test_labels <- to_categorical(mnist2$test$y)
+
+FLAGS <- flags(
+  
+  flag_numeric("dropout1", 0.3),
+  flag_numeric("dropout2", 0.3),
+  flag_integer("epochs", 30),
+  flag_numeric("learning_rate", 0.001),
+  flag_integer("batch_size", 64)
+)
+
+model<-keras_model_sequential()
+
+model %>% 
+  
+  layer_conv_2d(filters = 32, kernel_size = c(5,5),padding = 'Valid',
+                activation = 'relu', input_shape = c(28,28,1))%>%
+  
+  layer_conv_2d(filters = 32, kernel_size = c(5,5),padding = 'Same',
+                activation = 'relu')%>%
+  
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_dropout(rate = FLAGS$dropout1) %>% 
+  
+  layer_conv_2d(filters = 64, kernel_size = c(3,3),padding = 'Same',
+                activation = 'relu')%>%
+  
+  layer_conv_2d(filters = 64, kernel_size = c(3,3),padding = 'Same',
+                activation = 'relu')%>%
+  
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_dropout(rate = FLAGS$dropout2) %>%
+  
+  layer_flatten() %>% 
+  
+  layer_dense(units=256,activation='relu')%>%
+  layer_dense(units=10,activation='softmax')
+
+model%>%compile(
+  loss='categorical_crossentropy',
+  optimizer= optimizer_adam(lr=FLAGS$learning_rate),
+  metrics='accuracy'
+)
+
+datagen <- image_data_generator(
+  featurewise_center = F,
+  samplewise_center=F,
+  featurewise_std_normalization = F,
+  samplewise_std_normalization=F,
+  zca_whitening=F,
+  horizontal_flip = F,
+  vertical_flip = F,
+  width_shift_range = 0.15,
+  height_shift_range = 0.15,
+  zoom_range = 0.15,
+  rotation_range = .15,
+  shear_range = 0.15
+)
+
+#I didn't create validation generator, beacuase I just want to see the test accuracy. 
+
+datagen %>% fit_image_data_generator(train_images)
+
+start_time <- Sys.time()
+
+model %>%
+  
+  fit_generator(flow_images_from_data(train_images, train_labels, datagen, FLAGS$batch_size),
+                epochs = FLAGS$epochs,
+                steps_per_epoch = nrow(train_images)/FLAGS$batch_size
+                
+  )
+
+
+end_time <- Sys.time()
+cat("Running time for training: ", end_time - start_time, "mins")
+
+score <- model %>% evaluate(
+  test_images, test_labels,
+  verbose = 0
+)
+
+cat('Test loss:', score$loss, '\n')
+cat('Test accuracy:', score$acc, '\n')
+
+
+#================================part5:visualization=======================================
+
+#some plots in the report came from Rstudio Viewer
+
+#view train data
+
+barplot(table(mnist2$train$y), col=rainbow(10, 0.5), main="n Digits in Train",xlab = "labels")
+box()
+
+#use CNN to see the wrong prediction
+
+#first run the code of part3, then run the code below:
+
+# Predict labels using our model on test images
+predicted_test_labels = model %>% predict(test_images)
+#change column name to 1-9
+fix(predicted_test_labels)
+#select the index of the biggest values of each rows.
+x<-predicted_test_labels
+predicted_test_labels_argmax<-apply(x, 1, function(t) colnames(x)[which.max(t)])
+
+print(predicted_test_labels_argmax[1:10]) # first 10 predicted labels
+print(mnist2$test$y[1:10])                # first 10 true labels
+wrong_predictions = (predicted_test_labels_argmax != mnist2$test$y)
+print(table(wrong_predictions))
+wrong_indices = which(wrong_predictions)
+
+# Display the 25 digits which our model got the *most* wrong
+library(tensorflow)
+sess2 = tf$Session()   # Create a new TensorFlow session
+crossent = loss_categorical_crossentropy(k_constant(predicted_test_labels),k_constant(test_labels))$eval(session=sess2)
+crossent_sort = sort(crossent,index.return = TRUE, decreasing=TRUE)
+print(crossent_sort$x[1:10])  # 10 highest loss values
+print(crossent_sort$ix[1:10]) # 10 highest loss value indices
+
+par(mfrow=c(5,5))
+par(mar=c(0, 0, 1.5, 0), xaxs='i', yaxs='i')
+wrong_images = mnist2$test$x[crossent_sort$ix,,]
+for (i in 1:length(wrong_images)) { 
+  idx = crossent_sort$ix[[i]]
+  cat("true value is",mnist2$test$y[idx], "; guess is", predicted_test_labels_argmax[idx], "; loss val is", crossent_sort$x[i], "\n")
+  digit <- wrong_images[i,,]
+  plot(as.raster(digit, max = 255))
+  text(5,5,col="red", cex=3, predicted_test_labels_argmax[idx])
+  if (i==25){ break }
+}
+
+
+
+
+
+
+
+
+
